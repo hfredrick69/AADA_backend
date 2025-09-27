@@ -1,0 +1,4 @@
+__pycache__
+*.pyc
+.env
+firebase_service_key.json   # local copy only, copy explicitly in Dockerfile

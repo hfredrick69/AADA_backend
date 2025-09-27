@@ -1,0 +1,57 @@
+# students.py
+
+from fastapi import APIRouter, HTTPException, Depends, Body
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import Student
+
+router = APIRouter(
+    prefix="/students",
+    tags=["Students"],
+)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+class FCMTokenPayload(BaseModel):
+    fcm_token: str
+
+@router.get("/{student_id}")
+def get_student(
+    student_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve a student's details, including enrollment_status.
+    """
+    student = db.query(Student).get(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {
+        "id": student.id,
+        "name": student.name,
+        "email": student.email,
+        "enrollment_status": student.enrollment_status,
+    }
+
+@router.post("/{student_id}/fcm-token")
+def set_fcm_token(
+    student_id: int,
+    payload: FCMTokenPayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Update a student's FCM token for push notifications.
+    Expects JSON payload: { "fcm_token": "..." }
+    """
+    student = db.query(Student).get(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    student.fcm_token = payload.fcm_token
+    db.commit()
+    return {"status": "ok"}
