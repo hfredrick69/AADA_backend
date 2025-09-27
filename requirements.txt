@@ -8,3 +8,8 @@ alembic
 httpx
 requests
 firebase-admin
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+azure-storage-blob
+sendgrid

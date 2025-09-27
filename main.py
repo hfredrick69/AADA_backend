@@ -59,12 +59,14 @@ from routers.students    import router as students_router
 from routers.payments    import router as payments_router
 from routers.externships import router as externships_router
 from routers.fcm         import router as fcm_router
+from routers.documents   import router as documents_router
 
 app.include_router(auth_router,        prefix="/auth",        tags=["Authentication"])
 app.include_router(students_router,    prefix="/students",    tags=["Students"])
 app.include_router(payments_router,    prefix="/payments",    tags=["Payments"])
 app.include_router(externships_router, prefix="/externships", tags=["Externships"])
 app.include_router(fcm_router,         prefix="/fcm",         tags=["FCM"])
+app.include_router(documents_router,   prefix="/documents",   tags=["Documents"])
 
 # 6) Root health-check
 @app.get("/", tags=["Health"])

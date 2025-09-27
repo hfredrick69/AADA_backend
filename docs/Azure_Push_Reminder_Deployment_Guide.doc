@@ -1,0 +1,133 @@
+Azure Deployment Guide: Payment Reminder Pipeline
+
+1. Database Schema Updates
+
+1.1. invoices table (final structure):
+CREATE TABLE invoices (
+  id                  SERIAL PRIMARY KEY,
+  student_id          INTEGER NOT NULL REFERENCES students(id),
+  due_date            DATE    NOT NULL,
+  amount_cents        INTEGER NOT NULL,
+  description         TEXT    NOT NULL DEFAULT 'Monthly Tuition Payment',
+  status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  square_invoice_id   VARCHAR(64),
+  reminder_sent       BOOLEAN NOT NULL DEFAULT FALSE,
+  late_notice_sent    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_invoices_due_date ON invoices(due_date);
+
+1.2. ORM Invoice model (in models.py):
+class Invoice(Base):
+    __tablename__ = 'invoices'
+    id                = Column(Integer, primary_key=True)
+    student_id        = Column(Integer, ForeignKey('students.id'), nullable=False)
+    due_date          = Column(Date, nullable=False)
+    amount_cents      = Column(Integer, nullable=False)
+    description       = Column(Text, default='Monthly Tuition Payment', nullable=False)
+    status            = Column(String(20), default='PENDING', nullable=False)
+    square_invoice_id = Column(String(64))
+    reminder_sent     = Column(Boolean, default=False, nullable=False)
+    late_notice_sent  = Column(Boolean, default=False, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at        = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+2. Seeding Monthly Invoices
+
+File: seed_invoices_local.py
+
+#!/usr/bin/env python3
+from datetime import date
+from database import SessionLocal
+from models import Student, PaymentPlan, Invoice
+
+def seed_current_month():
+    session = SessionLocal()
+    due = date.today().replace(day=15)
+
+    # Remove old seeds for this date
+    session.query(Invoice)           .filter(Invoice.due_date == due)           .delete(synchronize_session=False)
+
+    # Map student -> plan amount
+    plans = {p.student_id: p.amount
+             for p in session.query(PaymentPlan).all()}
+
+    for student in session.query(Student).all():
+        amt = plans.get(student.id)
+        if not amt:
+            continue
+        inv = Invoice(student_id=student.id,
+                      due_date=due,
+                      amount_cents=amt)
+        session.add(inv)
+        print(f"Seeded invoice for {student.name} due {due}")
+
+    session.commit()
+    session.close()
+
+if __name__ == '__main__':
+    seed_current_month()
+
+3. Push-Reminder Script
+
+File: push_reminders.py
+
+#!/usr/bin/env python3
+from datetime import date
+from database import SessionLocal
+from models import Student, Invoice
+from fcm_reminder import send_push_notification as send_push
+
+def run_reminders():
+    session = SessionLocal()
+    today = date.today()
+
+    for inv in session.query(Invoice).all():
+        delta = (inv.due_date - today).days
+        print(f"[DEBUG] Invoice {inv.id}: due={inv.due_date}, delta={delta}, "
+              f"reminder_sent={inv.reminder_sent}, late_notice_sent={inv.late_notice_sent}")
+
+        student = session.get(Student, inv.student_id)
+        if not student or not student.fcm_token:
+            continue
+
+        # 3 days before: reminder
+        if delta == 3 and not inv.reminder_sent:
+            msg = f"Your payment of ${inv.amount_cents/100:.2f} is due on {inv.due_date:%Y-%m-%d}."
+            send_push(student.fcm_token, msg)
+            inv.reminder_sent = True
+            inv.updated_at = today
+            print(f"✅ Reminder sent to {student.name} for due {inv.due_date}")
+
+        # 2+ days late: late notice
+        elif delta <= -2 and not inv.late_notice_sent:
+            msg = (f"Your payment of ${inv.amount_cents/100:.2f} was due on "
+                   f"{inv.due_date:%Y-%m-%d}. Please pay ASAP.")
+            send_push(student.fcm_token, msg)
+            inv.late_notice_sent = True
+            inv.updated_at = today
+            print(f"✅ Late notice sent to {student.name} for due {inv.due_date}")
+
+    session.commit()
+    session.close()
+
+if __name__ == '__main__':
+    run_reminders()
+
+4. Azure Deployment Steps
+
+1. Environment Variables
+   - Set DATABASE_URL, FIREBASE_CREDENTIALS, etc., in Azure Configuration.
+
+2. Install Dependencies
+   pip install sqlalchemy python-dateutil firebase-admin python-dotenv
+
+3. File Storage
+   Place all scripts and models in your repository.
+
+4. Scheduling
+   Use Azure Functions Timer Triggers with appropriate cron expressions.
+
+5. Monitoring & Logs
+   Capture console output in Application Insights and set up alerts.
