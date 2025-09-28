@@ -26,6 +26,7 @@ class UserRegister(BaseModel):
     password: str
     first_name: str
     last_name: str
+    phone: Optional[str] = None
     role: str = "student"
 
 class UserLogin(BaseModel):
@@ -83,7 +84,8 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
     profile = UserProfile(
         user_id=user.id,
         first_name=user_data.first_name,
-        last_name=user_data.last_name
+        last_name=user_data.last_name,
+        phone=user_data.phone
     )
     db.add(profile)
 
@@ -103,8 +105,14 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
     # send_verification_email(user.email, verification_token)
 
     return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "is_verified": user.is_verified,
+        "first_name": profile.first_name,
+        "last_name": profile.last_name,
+        "phone": profile.phone,
         "message": "User registered successfully. Please check your email for verification.",
-        "user_id": user.id,
         "verification_required": True
     }
 

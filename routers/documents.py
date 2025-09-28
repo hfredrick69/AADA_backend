@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -123,6 +123,73 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload document: {str(e)}"
+        )
+
+@router.post("/upload-registration", response_model=DocumentResponse)
+async def upload_registration_document(
+    document_type: str = Form(...),
+    file: UploadFile = File(...),
+    user_id: Optional[int] = Form(0),
+    db: Session = Depends(get_db)
+):
+    """Upload a document during registration (no authentication required)."""
+    # Validate inputs
+    if document_type not in ALLOWED_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document type. Allowed types: {ALLOWED_DOCUMENT_TYPES}"
+        )
+
+    # Validate file
+    validate_file(file)
+
+    try:
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        # Reset file pointer and upload to Azure (using user_id = 0 for registration)
+        import io
+        file_stream = io.BytesIO(file_content)
+
+        blob_name, blob_url = storage_service.upload_document(
+            user_id=user_id,  # Use the provided user_id (0 for pre-registration, actual ID for post-registration)
+            document_type=document_type,
+            file_content=file_stream,
+            filename=file.filename
+        )
+
+        # Save document record to database with the provided user_id
+        document = Document(
+            user_id=user_id,  # Use the provided user_id (0 for pre-registration, actual ID for post-registration)
+            document_type=document_type,
+            file_name=file.filename,
+            file_url=blob_url,
+            file_size=file_size,
+            verification_status="pending"
+        )
+
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+        return DocumentResponse(
+            id=document.id,
+            document_type=document.document_type,
+            file_name=document.file_name,
+            file_url=document.file_url,
+            file_size=document.file_size,
+            verification_status=document.verification_status,
+            verification_notes=document.verification_notes,
+            uploaded_at=document.uploaded_at.isoformat(),
+            verified_at=document.verified_at.isoformat() if document.verified_at else None
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload registration document: {str(e)}"
         )
 
 @router.get("/list", response_model=List[DocumentResponse])
@@ -313,3 +380,28 @@ def list_pending_documents(
         )
         for doc in documents
     ]
+
+@router.post("/update-registration-documents/{user_id}")
+def update_registration_documents(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Update user_id for documents uploaded during registration (user_id=0) to the actual user_id."""
+    try:
+        # Find documents uploaded during registration for this user
+        documents_updated = db.query(Document).filter(
+            Document.user_id == 0
+        ).update({Document.user_id: user_id})
+
+        db.commit()
+
+        return {
+            "message": f"Updated {documents_updated} registration documents for user {user_id}",
+            "documents_updated": documents_updated
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update registration documents: {str(e)}"
+        )
