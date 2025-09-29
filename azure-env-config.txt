@@ -1,0 +1,52 @@
+Azure App Service Environment Variables Configuration
+=======================================================
+
+REQUIRED ENVIRONMENT VARIABLES for aada-backend-app12345:
+
+1. Database Configuration:
+DATABASE_URL=postgresql://aadaadmin:Universe1111@aada-pg-server27841.postgres.database.azure.com:5432/aada_local?sslmode=require
+
+2. Security Keys:
+SECRET_KEY=your-secret-key-here-replace-with-secure-random-string
+JWT_SECRET_KEY=your-jwt-secret-key-here-replace-with-secure-random-string
+
+3. Azure Storage:
+AZURE_STORAGE_CONNECTION_STRING=your-azure-storage-connection-string-here
+AZURE_STORAGE_CONTAINER_NAME=documents
+
+4. SendGrid Email:
+SENDGRID_API_KEY=your-sendgrid-api-key-here
+
+5. Firebase (for push notifications):
+FIREBASE_CREDENTIALS=path-to-firebase-service-key.json (or JSON string)
+
+6. Application Settings:
+PYTHONPATH=/home/site/wwwroot
+WEBSITES_ENABLE_APP_SERVICE_STORAGE=false
+WEBSITES_PORT=8000
+
+7. Runtime Settings:
+PYTHON_VERSION=3.12
+WEBSITES_CONTAINER_START_TIME_LIMIT=1800
+
+DEPLOYMENT INSTRUCTIONS:
+=======================
+
+1. Go to Azure Portal (portal.azure.com)
+2. Navigate to your App Service: aada-backend-app12345
+3. Go to "Deployment Center"
+4. Upload the deployment zip: aada-backend-deployment.zip
+5. Go to "Configuration" -> "Application Settings"
+6. Add all the environment variables listed above
+7. Save and restart the app service
+
+STARTUP COMMAND:
+================
+Set this in Configuration -> General Settings -> Startup Command:
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+DATABASE CONNECTION TEST:
+========================
+The app should connect to: aada-pg-server27841.postgres.database.azure.com
+Database: aada_local
+All required tables are present and compatible.
