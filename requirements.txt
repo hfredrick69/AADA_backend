@@ -3,7 +3,7 @@ uvicorn[standard]
 sqlalchemy
 psycopg2-binary
 python-dotenv
-pydantic
+pydantic[email]
 alembic
 httpx
 requests
@@ -13,3 +13,4 @@ passlib[bcrypt]
 python-multipart
 azure-storage-blob
 sendgrid
+email-validator
